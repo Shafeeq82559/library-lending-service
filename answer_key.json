@@ -1,0 +1,183 @@
+[
+  {
+    "id": "R1",
+    "requirement_text": "Staff can add a new title with ISBN, title, author and number of copies (genre and year optional). Each ISBN may appear only once; duplicates are refused with a clear message.",
+    "status": "implemented",
+    "evidence": [
+      "src/main/java/com/example/library/controller/BookController.java :: BookController.addBook (POST /api/books, @Valid)",
+      "src/main/java/com/example/library/service/BookService.java :: BookService.addBook (existsByIsbn check -> 409 conflict)",
+      "src/main/java/com/example/library/dto/CreateBookRequest.java :: CreateBookRequest (@NotBlank isbn/title/author, @Min(1) copies)",
+      "src/main/java/com/example/library/model/Book.java :: Book.isbn (unique column)",
+      "src/main/java/com/example/library/repository/BookRepository.java :: BookRepository.existsByIsbn"
+    ],
+    "gap_description": null,
+    "trap": false,
+    "trap_explanation": null
+  },
+  {
+    "id": "R2",
+    "requirement_text": "A member can check out a book when a copy is on the shelf; the shelf count goes down by one; refused when no copies are left; lending period is two weeks.",
+    "status": "implemented",
+    "evidence": [
+      "src/main/java/com/example/library/controller/LoanController.java :: LoanController.borrow (POST /api/loans)",
+      "src/main/java/com/example/library/service/LoanService.java :: LoanService.borrow (hasAvailableCopy check, checkOutCopy, dueOn = today + LOAN_PERIOD_DAYS)",
+      "src/main/java/com/example/library/model/Book.java :: Book.hasAvailableCopy, Book.checkOutCopy",
+      "src/test/java/com/example/library/LoanServiceTest.java :: borrowingTakesACopyOffTheShelf, cannotBorrowWhenNoCopiesLeft"
+    ],
+    "gap_description": null,
+    "trap": false,
+    "trap_explanation": null
+  },
+  {
+    "id": "R3",
+    "requirement_text": "Staff record a return; the copy goes back on the shelf and the loan is closed; an already-closed loan cannot be returned again.",
+    "status": "implemented",
+    "evidence": [
+      "src/main/java/com/example/library/controller/LoanController.java :: LoanController.returnBook (POST /api/loans/{id}/return)",
+      "src/main/java/com/example/library/service/LoanService.java :: LoanService.returnBook, LoanService.getOpenLoan (rejects closed loans)",
+      "src/main/java/com/example/library/model/Book.java :: Book.checkInCopy",
+      "src/main/java/com/example/library/model/Loan.java :: Loan.returnedOn, Loan.isOpen",
+      "src/test/java/com/example/library/LoanServiceTest.java :: returningPutsTheCopyBack"
+    ],
+    "gap_description": null,
+    "trap": false,
+    "trap_explanation": null
+  },
+  {
+    "id": "R4",
+    "requirement_text": "No member may have more than five books out at the same time; a sixth checkout is refused.",
+    "status": "implemented",
+    "evidence": [
+      "src/main/java/com/example/library/service/LoanService.java :: LoanService.MAX_OPEN_LOANS = 5, check in LoanService.borrow",
+      "src/main/java/com/example/library/repository/LoanRepository.java :: LoanRepository.countByMemberIdAndReturnedOnIsNull",
+      "src/test/java/com/example/library/LoanServiceTest.java :: sixthOpenLoanIsRejected"
+    ],
+    "gap_description": null,
+    "trap": false,
+    "trap_explanation": null
+  },
+  {
+    "id": "R5",
+    "requirement_text": "New members join with full name and valid email (phone optional); each email can belong to only one member.",
+    "status": "implemented",
+    "evidence": [
+      "src/main/java/com/example/library/controller/MemberController.java :: MemberController.register (POST /api/members, @Valid)",
+      "src/main/java/com/example/library/dto/RegisterMemberRequest.java :: RegisterMemberRequest (@NotBlank fullName, @NotBlank @Email email, @Pattern phone)",
+      "src/main/java/com/example/library/service/MemberService.java :: MemberService.register (existsByEmailIgnoreCase -> 409 conflict)",
+      "src/main/java/com/example/library/model/Member.java :: Member.email (unique column)",
+      "src/test/java/com/example/library/MemberControllerTest.java :: registersValidMember, rejectsInvalidEmail, rejectsDuplicateEmail"
+    ],
+    "gap_description": null,
+    "trap": false,
+    "trap_explanation": null
+  },
+  {
+    "id": "R6",
+    "requirement_text": "Type part of a title or author name and get every matching book, listed alphabetically by title.",
+    "status": "partial",
+    "evidence": [
+      "src/main/java/com/example/library/controller/BookController.java :: BookController.search (GET /api/books/search?q=)",
+      "src/main/java/com/example/library/service/BookService.java :: BookService.search",
+      "src/main/java/com/example/library/repository/BookRepository.java :: BookRepository.findByTitleContainingIgnoreCaseOrAuthorContainingIgnoreCase"
+    ],
+    "gap_description": "Matching by partial title or author (case-insensitive) works, but results are not sorted. The repository method has no OrderByTitle and takes no Sort parameter, and the service does not sort the list, so results come back in database order.",
+    "trap": false,
+    "trap_explanation": null
+  },
+  {
+    "id": "R7",
+    "requirement_text": "Late returns are charged $0.25 per day past the due date, capped at $10.00 per loan; fees on an account are viewable.",
+    "status": "partial",
+    "evidence": [
+      "src/main/java/com/example/library/service/FineCalculator.java :: FineCalculator.calculate, FineCalculator.DAILY_RATE = 0.25",
+      "src/main/java/com/example/library/service/LoanService.java :: LoanService.returnBook (creates Fine when amount > 0)",
+      "src/main/java/com/example/library/model/Fine.java :: Fine",
+      "src/main/java/com/example/library/controller/MemberController.java :: MemberController.fines (GET /api/members/{id}/fines)",
+      "src/main/java/com/example/library/service/MemberService.java :: MemberService.finesFor"
+    ],
+    "gap_description": "The per-day rate and viewing an account's fees are implemented, but there is no $10.00 maximum. FineCalculator.calculate returns DAILY_RATE * daysLate without any cap, so a book returned 60 days late is charged $15.00.",
+    "trap": false,
+    "trap_explanation": null
+  },
+  {
+    "id": "R8",
+    "requirement_text": "Member details (name, email, phone) must meet the same quality rules at sign-up and when changed later.",
+    "status": "partial",
+    "evidence": [
+      "src/main/java/com/example/library/dto/RegisterMemberRequest.java :: RegisterMemberRequest (validated on sign-up)",
+      "src/main/java/com/example/library/dto/UpdateMemberRequest.java :: UpdateMemberRequest (no constraint annotations)",
+      "src/main/java/com/example/library/controller/MemberController.java :: MemberController.update (PUT /api/members/{id}, @RequestBody without @Valid)",
+      "src/main/java/com/example/library/service/MemberService.java :: MemberService.update (copies fields with no checks)"
+    ],
+    "gap_description": "Validation applies only at sign-up. On update, UpdateMemberRequest has no @NotBlank/@Email/@Pattern constraints, MemberController.update has no @Valid, and MemberService.update does not check the email format or check for duplicate emails. An invalid email or a blank name (\"\") is accepted. Changing to an email that is already in use fails only at the database unique constraint (an unhandled error), not with a clean validation message.",
+    "trap": false,
+    "trap_explanation": null
+  },
+  {
+    "id": "R9",
+    "requirement_text": "A member can get another two weeks on a book they have out, at most twice per loan; books already late cannot be given more time.",
+    "status": "partial",
+    "evidence": [
+      "src/main/java/com/example/library/controller/LoanController.java :: LoanController.renew (POST /api/loans/{id}/renew)",
+      "src/main/java/com/example/library/service/LoanService.java :: LoanService.renew (adds LOAN_PERIOD_DAYS to dueOn; rejects when Loan.isOverdueOn(today))",
+      "src/main/java/com/example/library/model/Loan.java :: Loan.isOverdueOn",
+      "src/test/java/com/example/library/LoanServiceTest.java :: renewingPushesTheDueDateOut"
+    ],
+    "gap_description": "The two-week extension and the 'not when overdue' rule are implemented, but nothing limits the number of extensions. Loan has no renewal counter and LoanService.renew does not track or check how many times a loan was extended, so a loan can be extended without limit.",
+    "trap": false,
+    "trap_explanation": null
+  },
+  {
+    "id": "R10",
+    "requirement_text": "When every copy is out, a member can join a waiting line; the first in line gets the returned copy before anyone else.",
+    "status": "missing",
+    "evidence": [],
+    "gap_description": "No hold/reservation/waitlist entity, repository, service or endpoint exists. LoanService.borrow refuses checkout when no copies are left and offers no queue, and LoanService.returnBook simply puts the copy back on the shelf for anyone.",
+    "trap": false,
+    "trap_explanation": null
+  },
+  {
+    "id": "R11",
+    "requirement_text": "Members get an email reminder two days before a book is due.",
+    "status": "missing",
+    "evidence": [],
+    "gap_description": "No email/notification code, no mail dependency (spring-boot-starter-mail is not in pom.xml), no scheduled job (@Scheduled/@EnableScheduling absent), and no query for loans due soon.",
+    "trap": false,
+    "trap_explanation": null
+  },
+  {
+    "id": "R12",
+    "requirement_text": "Staff can take lost or damaged copies out of circulation; those copies no longer count as available and cannot be lent.",
+    "status": "missing",
+    "evidence": [],
+    "gap_description": "No way to remove or retire a copy or title. Book has no status or withdrawn/lost/damaged field, there is no method to decrease totalCopies, and BookController has no DELETE or update endpoint. Book copy counts change only through checkout and return.",
+    "trap": false,
+    "trap_explanation": null
+  },
+  {
+    "id": "R13",
+    "requirement_text": "Staff can temporarily suspend a member's borrowing privileges with a reason, a suspended member cannot borrow, and staff can reinstate them later.",
+    "status": "implemented",
+    "evidence": [
+      "src/main/java/com/example/library/model/PatronStanding.java :: PatronStanding { GOOD, RESTRICTED }",
+      "src/main/java/com/example/library/model/Member.java :: Member.standing, Member.standingNote, Member.isInGoodStanding",
+      "src/main/java/com/example/library/service/MemberService.java :: MemberService.restrict (suspend + reason), MemberService.clearStanding (reinstate)",
+      "src/main/java/com/example/library/controller/MemberController.java :: MemberController.changeStanding (PUT /api/members/{id}/standing)",
+      "src/main/java/com/example/library/dto/StandingChangeRequest.java :: StandingChangeRequest (standing, note)",
+      "src/main/java/com/example/library/service/LoanService.java :: LoanService.borrow (rejects when !member.isInGoodStanding())",
+      "src/test/java/com/example/library/LoanServiceTest.java :: restrictedMemberCannotBorrowUntilCleared"
+    ],
+    "gap_description": null,
+    "trap": true,
+    "trap_explanation": "Fully implemented under the names 'standing' / 'restrict' / 'clearStanding'. The words suspend, reinstate, privilege, block or ban appear nowhere in the code, so a keyword search wrongly reports it as missing."
+  },
+  {
+    "id": "R14",
+    "requirement_text": "Branch managers need a monthly report of the most-borrowed titles, ranked from most to least borrowed.",
+    "status": "missing",
+    "evidence": [],
+    "gap_description": "No code counts or ranks loans per title, and nothing filters by month. LoanRepository has no grouping or aggregation query. The only report (CatalogReportService.generateReport, GET /api/books/report) reads BookRepository.findAll() and never looks at loans.",
+    "trap": true,
+    "trap_explanation": "Decoy: CatalogReportService.generateReport / BookController.report / CatalogReport match 'report', but they produce an inventory snapshot (total titles, total copies, copies on shelf, titles per genre), not a borrowing-popularity report."
+  }
+]
